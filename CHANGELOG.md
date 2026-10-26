@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **`urllib3` requirement loosened** from `~=2.6.3` to `>=2.6.3,<3.0.0`, so the plugin no longer conflicts with other NetBox plugins that need a newer 2.x release (for example netbox-proxbox, which requires 2.8.0 for security fixes). The only `urllib3` API used is `InsecureRequestWarning`.
+
 ## [1.1.0] - 2026-05-16
 
 ### Added
