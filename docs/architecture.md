@@ -22,8 +22,15 @@ flowchart LR
   - `<base>/proxy/network/integration/v1`
   - `<base>/integration/v1`
   - or direct URL if already ending with `/integration/v1`
+  - or `<base>/v1` if the URL ends with `/integration` (the server URL as published in the Network API reference)
 - Header formats are auto-probed (`X-API-KEY`, `Authorization`, or custom `UNIFI_API_KEY_HEADER`)
 - `Sites` and resource pagination are handled with `offset`/`limit`
+- Payload shapes follow the Network API v10.6.106 OpenAPI spec:
+  - `GET /networks` only lists `id`/`name`/`vlanId`/`management`. Subnet, gateway and DHCP range come from
+    `GET /networks/{id}` (`ipv4Configuration`) and are flattened to `ipSubnet`, `gateway`, `dhcpd*` keys.
+    Switch-managed networks (`management: SWITCH`) contribute prefixes and DHCP ranges but no gateway interface.
+  - Device ports and radios come from `GET /devices/{id}`; radios have no name, so they are named `radio-<GHz>GHz`.
+  - `GET /clients` lists currently connected clients only (`connectedAt`, no `lastSeen`); VPN and Teleport clients have no MAC.
 - `unifi.ui.com` cloud API keys are not treated as local Integration API keys
 
 ### Session login (UniFi OS / legacy)

@@ -376,6 +376,9 @@ class Unifi:
     def _integration_base_candidates(self):
         if "/integration/v1" in self.base_url:
             return [self.base_url]
+        # The server URLs in the Network API reference stop at /integration; paths start at /v1.
+        if self.base_url.endswith("/integration"):
+            return [f"{self.base_url}/v1"]
         return [
             f"{self.base_url}/proxy/network/integration/v1",
             f"{self.base_url}/integration/v1",

@@ -1541,6 +1541,10 @@ def map_unifi_port_to_netbox_type(port, api_style="integration"):
     # Integration API
     max_speed = port.get("maxSpeed") or port.get("maxSpeedMbps") or port.get("speed") or port.get("speedMbps") or 0
     connector = (port.get("connector") or "").lower()
+    if connector == "qsfp28":
+        return "100gbase-x-qsfp28"
+    if connector == "sfp28":
+        return "25gbase-x-sfp28"
     if "sfp" in connector:
         if max_speed >= 10000:
             return "10gbase-x-sfpp"
@@ -1552,8 +1556,24 @@ def map_unifi_port_to_netbox_type(port, api_style="integration"):
     return "1000base-t"
 
 
+# Integration API radios report `wlanStandard`. Kept to interface types every supported
+# NetBox release accepts; the exact standard is also written to the description.
+_WLAN_STANDARD_TYPES = {
+    "802.11a": "ieee802.11a",
+    "802.11b": "ieee802.11g",
+    "802.11g": "ieee802.11g",
+    "802.11n": "ieee802.11n",
+    "802.11ac": "ieee802.11ac",
+    "802.11ax": "ieee802.11ax",
+    "802.11be": "ieee802.11ax",
+}
+
+
 def map_unifi_radio_to_netbox_type(radio):
     """Map a UniFi radio to a NetBox wireless interface type."""
+    standard_type = _WLAN_STANDARD_TYPES.get(str(radio.get("wlanStandard") or "").lower())
+    if standard_type:
+        return standard_type
     band = str(radio.get("band") or radio.get("radio") or "").lower()
     if "6e" in band or "6ghz" in band or "6g" in band:
         return "ieee802.11ax"
@@ -1667,8 +1687,13 @@ def _build_port_description(port, *, is_uplink=False, poe=None, speed_mbps=None)
 def _build_radio_description(radio):
     parts = []
     band = _first_port_value(radio, "band", "radio", "radioName", "radio_name")
+    if not band and radio.get("frequencyGHz"):
+        band = f"{radio['frequencyGHz']:g}GHz"
     if band:
         parts.append(f"Band: {str(band).upper()}")
+
+    if radio.get("wlanStandard"):
+        parts.append(f"Standard: {radio['wlanStandard']}")
 
     channel = _first_port_value(radio, "channel", "channelNumber", "channel_number")
     if channel:
@@ -1682,6 +1707,8 @@ def _build_radio_description(radio):
         "htMode",
         "ht_mode",
     )
+    if not width and radio.get("channelWidthMHz"):
+        width = f"{radio['channelWidthMHz']}MHz"
     if width:
         parts.append(f"Width: {width}")
 
@@ -1757,11 +1784,17 @@ def normalize_port_data(device, api_style="integration"):
         if "?" in name:
             continue
 
+        # Integration API v10.x reports PoE as an object: {enabled, standard, state, type}.
+        poe_enabled = False
+        if isinstance(poe, dict):
+            poe_enabled = bool(poe.get("enabled"))
+            poe = poe.get("standard") if poe_enabled else None
+
         nb_type = map_unifi_port_to_netbox_type(port, api_style)
         speed_kbps = int(speed_mbps) * 1000 if speed_mbps else None
 
-        nb_poe_mode = None
-        if poe:
+        nb_poe_mode = "pse" if poe_enabled else None
+        if poe and not nb_poe_mode:
             poe_str = str(poe).lower()
             if poe_str in ("auto", "pasv24", "passthrough", "on"):
                 nb_poe_mode = "pse"
@@ -1782,6 +1815,14 @@ def normalize_port_data(device, api_style="integration"):
             ),
         })
     return ports
+
+
+def _radio_name_from_frequency(radio):
+    """Integration API radios have no name or index, only a frequency (one radio per band)."""
+    frequency = radio.get("frequencyGHz")
+    if isinstance(frequency, (int, float)) and not isinstance(frequency, bool):
+        return f"radio-{frequency:g}GHz"
+    return None
 
 
 def normalize_radio_data(device, api_style="integration"):
@@ -1810,7 +1851,7 @@ def normalize_radio_data(device, api_style="integration"):
         raw_radios = device.get("radio_table") or []
 
     for radio in raw_radios:
-        name = radio.get("name") or f"radio{radio.get('radio', '?')}"
+        name = radio.get("name") or _radio_name_from_frequency(radio) or f"radio{radio.get('radio', '?')}"
         # Skip radios without real data (missing index/name)
         if "?" in name:
             continue
@@ -2086,6 +2127,15 @@ def sync_device_interfaces(nb, nb_device, device, api_style="integration", unifi
             logger.warning(f"Failed to delete stale interface '{iface_name}' from {device_name}: {e}")
 
 
+def _is_gateway_managed_network(net):
+    """False for Integration API networks routed by a switch or not managed by UniFi.
+
+    Legacy networkconf records carry no ``management`` field and are always accepted.
+    """
+    management = str(net.get("management") or "").upper()
+    return not management or management == "GATEWAY"
+
+
 def sync_gateway_interfaces(nb, nb_device, device, site_obj, tenant, vrf, unifi=None):
     """Sync VLAN and management interfaces + IPs for a UniFi Security Appliance (GATEWAY).
 
@@ -2138,6 +2188,9 @@ def sync_gateway_interfaces(nb, nb_device, device, site_obj, tenant, vrf, unifi=
 
         # Skip VPN tunnel and remote-user networks — they are not gateway LAN/WAN interfaces
         if purpose in ("vpn-client", "remote-user-vpn", "site-vpn", "openvpn"):
+            continue
+
+        if not _is_gateway_managed_network(net):
             continue
 
         if not ip_subnet:

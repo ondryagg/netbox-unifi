@@ -8,6 +8,17 @@ All notable changes to this project are documented in this file.
 
 - **`urllib3` requirement loosened** from `~=2.6.3` to `>=2.6.3,<3.0.0`, so the plugin no longer conflicts with other NetBox plugins that need a newer 2.x release (for example netbox-proxbox, which requires 2.8.0 for security fixes). The only `urllib3` API used is `InsecureRequestWarning`.
 
+### Fixed
+
+Aligned the Integration API handling with the UniFi Network API v10.6.106 OpenAPI spec.
+
+- **Prefixes, DHCP ranges and gateway interfaces on API-key controllers** — the v10.x network list no longer carries subnet or DHCP data. Each network's details (`ipv4Configuration`) are now fetched and mapped to the fields the sync already reads, instead of relying on the legacy `networkconf` fallback (which does not authenticate with an API key).
+- **Switch-managed networks** no longer have their host address assigned to the gateway as a VLAN interface IP.
+- **Access point radios were skipped** — v10.x radios have no name or band. They are now named `radio-<GHz>GHz`, typed from `wlanStandard`, and described with band, standard, channel and width.
+- **PoE on switch ports** — `poe` is now an object (`enabled`, `standard`, ...). PoE mode is set from `enabled` and the description shows the standard instead of a raw dict.
+- **25G/100G ports** — `SFP28` and `QSFP28` connectors map to `25gbase-x-sfp28` and `100gbase-x-qsfp28`.
+- **Controller URL** — a URL ending in `/integration` (the server URL shown in the API reference) is accepted.
+
 ## [1.1.0] - 2026-05-16
 
 ### Added

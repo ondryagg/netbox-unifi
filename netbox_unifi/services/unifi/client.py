@@ -9,7 +9,8 @@ class Client(BaseResource):
     UniFi client (STA) resource.
 
     Integration API v1:  /sites/{site_id}/clients
-        Returns all known clients (online + recently offline) with lastSeen timestamp.
+        Returns currently connected clients only, with a connectedAt timestamp (no lastSeen).
+        macAddress is present on WIRED and WIRELESS clients; VPN and TELEPORT clients have none.
 
     Legacy API:  /api/s/{site_name}/stat/user
         Returns all known clients with last_seen timestamp.
